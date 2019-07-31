@@ -1,0 +1,9 @@
+{
+  "files.associations": {
+    "hwproghelperfunctions.h": "c",
+    "i2c_simple_master.h": "c",
+    "acc303.h": "c",
+    "delay.h": "c"
+  },
+  "C_Cpp.intelliSenseEngineFallback": "Disabled"
+}
