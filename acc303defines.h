@@ -1,13 +1,14 @@
-
 #ifndef ACC303DEFINES_H_
 #define ACC303DEFINES_H_
 
-#define LSM303AGR_ACCEL_ADDRESS 0b0011001
-#define LSM303AGR_MAG_ADDRESS 0b0011110
+#define ACC_ADDR 0b0011001
+#define MAG_ADDR 0b0011110
 
+#include <stdint.h>
 
-
-
+#ifdef __cplusplus
+	extern "C"{
+#endif
 
       enum Register {
         STATUS_REG_AUX = 0x07,
@@ -178,11 +179,11 @@
 
 
     // the values of the following enum are 0b(LPen,HR)
-    typedef enum  {
+  typedef enum  {
         LowPowerMode = 0b10,
         NormalMode = 0b00,
         HighResMode = 0b01
-    } accelerometerMode;
+  } accelerometerMode;
 
     typedef enum  {
         MagLowPowerMode = 0b0,
@@ -254,5 +255,9 @@ typedef    enum {
         AndCombination = 0b10000000,
         PositionRecognition = 0b11000000
     };
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

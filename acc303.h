@@ -2,11 +2,21 @@
 #ifndef ACC303_H_
 #define ACC303_H_
 
-#include <acc303defines.h>
 
-#define LSM303AGR_ACCEL_ADDRESS 0b0011001
-#define LSM303AGR_MAG_ADDRESS 0b0011110
- uint8_t storedSetPowerMode;
+
+#include <acc303defines.h>
+#include <i2c_simple_master.h>
+#include <stdio.h>
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+	extern "C"{
+#endif
+
+
+#define ACC_ADDR 0b0011001
+#define MAG_ADDR 0b0011110
 
 union Reinterpret {										  //change datatype without changing bit values: reinterpret using unions-
 	uint16_t convertedValueUnsigned;
@@ -20,58 +30,91 @@ union Reinterpret8b {										//change datatype without changing bit values: re
 }reinterpret8b;
 // union Reinterpret8b reinterpret8b;
 
+union {
+	struct {
+		uint8_t uByteLow;
+		uint8_t uByteHigh;
+		};
+	struct {
+		int8_t sByteLow;
+		int8_t sByteHigh;
+		};
 
-    bool checkWhoAmI_A();
-    bool checkWhoAmI_M();
+	uint16_t uTwoByte;
+	int16_t sTwoByte;
+}bitConvert;
 
-  void initializeLSM(accelerometerMode powerMode);
-  void setPowerMode(accelerometerMode powerMode);
+enum {
+	accX = 0,
+	accY,
+	accZ,
+	magX,
+	magY,
+	magZ,
+}vector;
+
+accelerometerMode currentMode;
+
+uint8_t      read_data[2];
+
+uint16_t vectordata[6];
+
+
+/** Structure passed into read_handler to describe the actions to be performed by the handler */
 
 
 
 //-----------Accelerometer functions-------------
+bool acc_whoAmI();
+void acc_init(accelerometerMode powerMode);
+void acc_powerMode(accelerometerMode powerMode);
+void acc_enable();
+void acc_disable();
+void acc_reboot();
+void acc_enableBDU();
 
- void enableAcceleroMeter();
-    void disableAcceleroMeter();
-    void rebootAcceleroMeter();
+void acc_setScale(scale scale);
 
-void setScale(scale scale);
-
-int16_t getAccX();
-int16_t getAccY();
-int16_t getAccZ();
+int16_t acc_getX();
+int16_t acc_getY();
+int16_t acc_getZ();
 
 //-----------Magnetometer functions-------------
 
-uint16_t getMagX();
-uint16_t getMagY();
-uint16_t getMagZ();
+
+bool mag_whoAmI();
+
+uint8_t mag_enableLowPass();
+uint8_t mag_disableLowPass();
+void mag_softwareReset();
+void mag_enable();
+void mag_disable();
+void mag_reboot();
+
+uint16_t mag_getX();
+uint16_t mag_getY();
+uint16_t mag_getZ();
 void softReset();
 void selfTest();
 
 
-    void enableMagnetoMeter();
-    void disableMagnetoMeter();
-    void rebootMagnetoMeter();
-	uint8_t lowPassEn();
-	uint8_t lowPassDis();
-    void MagSoftwareReset();
-
-
-    void enableInterrupt1();
-    void disableInterrupt1();
-    void enableInterrupt2();
-    void disableInterrupt2();
-    void enableMagnetometerInterrupt();
-    void disableMagnetometerInterrupt();
-    bool checkInterruptRegister();
+void enableInterrupt1();
+void disableInterrupt1();
+void enableInterrupt2();
+void disableInterrupt2();
+void mag_enableInterrupt();
+void mag_disableInterrupt();
+bool checkInterruptRegister();
 
 
 uint8_t readRegister(uint8_t address, uint8_t reg);
-uint16_t read2BRegister(uint8_t address, uint8_t reg);
+uint16_t read16bRegister(uint8_t address, uint8_t reg);
 
 void writeRegister(uint8_t address, uint8_t reg, uint16_t data);
 void write2BRegister(uint8_t address, uint8_t reg, uint16_t data);
 
+#ifdef __cplusplus
+}
 #endif
 
+#endif

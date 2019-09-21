@@ -3,7 +3,10 @@
     "hwproghelperfunctions.h": "c",
     "i2c_simple_master.h": "c",
     "acc303.h": "c",
-    "delay.h": "c"
+    "delay.h": "c",
+    "string_view": "c",
+    "limits": "c",
+    "type_traits": "c"
   },
   "C_Cpp.intelliSenseEngineFallback": "Disabled"
 }
