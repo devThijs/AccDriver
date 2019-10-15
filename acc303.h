@@ -18,31 +18,6 @@
 #define ACC_ADDR 0b0011001
 #define MAG_ADDR 0b0011110
 
-union Reinterpret {										  //change datatype without changing bit values: reinterpret using unions-
-	uint16_t convertedValueUnsigned;
-	int16_t convertedValueSigned;
-}reinterpret;
-// union Reinterpret reinterpret;
-
-union Reinterpret8b {										//change datatype without changing bit values: reinterpret using unions-
-	uint8_t convertedValueUnsigned;
-	int8_t convertedValueSigned;
-}reinterpret8b;
-// union Reinterpret8b reinterpret8b;
-
-union {
-	struct {
-		uint8_t uByteLow;
-		uint8_t uByteHigh;
-		};
-	struct {
-		int8_t sByteLow;
-		int8_t sByteHigh;
-		};
-
-	uint16_t uTwoByte;
-	int16_t sTwoByte;
-}bitConvert;
 
 enum {
 	accX = 0,
@@ -52,17 +27,6 @@ enum {
 	magY,
 	magZ,
 }vector;
-
-accelerometerMode currentMode;
-
-uint8_t      read_data[2];
-
-uint16_t vectordata[6];
-
-
-/** Structure passed into read_handler to describe the actions to be performed by the handler */
-
-
 
 //-----------Accelerometer functions-------------
 bool acc_whoAmI();
@@ -78,6 +42,9 @@ void acc_setScale(scale scale);
 int16_t acc_getX();
 int16_t acc_getY();
 int16_t acc_getZ();
+
+void acc_enableInterrupt0(uint8_t axesEvents, double threshold, uint8_t duration, interruptMode interruptMode);
+void acc_enableInterrupt1(uint8_t axesEvents, double threshold, uint8_t duration, interruptMode interruptMode);
 
 //-----------Magnetometer functions-------------
 
@@ -97,10 +64,8 @@ uint16_t mag_getZ();
 void softReset();
 void selfTest();
 
-
-void enableInterrupt1();
-void disableInterrupt1();
-void enableInterrupt2();
+void acc_enableInterrupt0(uint8_t axesEvents, double threshold, uint8_t duration, interruptMode interruptMode);
+void acc_enableInterrupt1(uint8_t axesEvents, double threshold, uint8_t duration, interruptMode interruptMode);
 void disableInterrupt2();
 void mag_enableInterrupt();
 void mag_disableInterrupt();

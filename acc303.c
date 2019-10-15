@@ -1,16 +1,12 @@
 //-------------------------------------LSM303AGR driver--------------------------------------
 /////////////////////////////////////////////////////////////////////////////////////////////
-
-
 #include <atmel_start.h>
 #include <stdbool.h>
-
 #include <i2c_simple_master.h>	//ASF4 I2C driver
 #include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-// #include <math.h>
 
+#include <stdint.h>
+#include <math.h>
 
 #include <acc303.h>
 #include <acc303defines.h>
@@ -20,26 +16,64 @@
 #define MAG_ADDR 0b0011110
 
 
+static struct {
+accelerometerMode powerMode;
+scale scaleMode;
+}configs;
 
-accelerometerMode currentMode;
+int16_t vectordata[6];	    //raw data; signed
+double vectordataGs[6];	    //applied scale, bitsize conversion
 
-uint8_t      read_data[2];
+static union bitConvert{
+	struct {
+		uint8_t uByteLow;
+		uint8_t uByteHigh;
+	};
+	struct {
+		int8_t sByteLow;
+		int8_t sByteHigh;
+	};
+	
+	struct {
+		int16_t	fourbitsfiller : 4;
+		int16_t s12bit;
+	};
+	struct {
+		int16_t sixbitsfillers : 6;
+		int16_t s10bit;
+	};
 
-uint16_t vectordata[6];
+	uint16_t uTwoByte;
+	int16_t sTwoByte;
+}bitConvert;
 
-
-
-
-
+//---------------------------------Accelerometer functions-----------------------------------
+/////////////////////////////////////////////////////////////////////////////////////////////
 
 
 getAxes(){
 	for(int x=0; x<3; x++){
-		vectordata[x] = read16bRegister(ACC_ADDR, (OUT_X_L_A + 2*x));
+
+		bitConvert.uTwoByte = read16bRegister(ACC_ADDR, (OUT_X_L_A + 2*x));
+		vectordata[x] =	bitConvert.sTwoByte;
 	}
+
 	for (int x=0; x<6; x++){
-		vectordata[x + 3] = read16bRegister(MAG_ADDR, (OUTX_L_REG_M + 2*x));
+		bitConvert.uTwoByte = read16bRegister(MAG_ADDR, (OUTX_L_REG_M + 2*x));
+		vectordata[x + 3] = bitConvert.sTwoByte;
 	}
+}
+
+getAxesScaled(){
+	getAxes();
+	for(int x=0; x<3; x++){
+		vectordataGs[x] =	acc_getGsRawValue(vectordata[x]);		
+	}
+
+	for (int x=0; x<6; x++){
+	 vectordataGs[x + 3] = mag_getScaledValue(vectordata[x+3]);
+	}
+
 }
 
 //---------------configuration variables-----------------
@@ -48,15 +82,20 @@ getAxes(){
     //         unless idle      
 
 bool acc_whoAmI(){		
-    return ((readRegister(ACC_ADDR, WHO_AM_I_A) == 0b00110011));
-}
+    return ((readRegister(ACC_ADDR, WHO_AM_I_A) == 0b00110011));		}
 
 bool mag_whoAmI(){	
-    return ((readRegister(MAG_ADDR, WHO_AM_I_M) == 0b01000000));
-}
+    return ((readRegister(MAG_ADDR, WHO_AM_I_M) == 0b01000000));		}
+
+
 void acc_enableBDU(){
-	writeRegister	(ACC_ADDR, CTRL_REG4_A, (readRegister(ACC_ADDR, CTRL_REG4_A) | (1<<BDU)	)	);
-}
+	writeRegister	(ACC_ADDR, CTRL_REG4_A, (readRegister(ACC_ADDR, CTRL_REG4_A) | (1<<BDU))			);		}
+
+void acc_setScale(scale scale){
+	writeRegister(ACC_ADDR, CTRL_REG4_A, (readRegister(ACC_ADDR, CTRL_REG4_A)	| (scale<<FS0))		);		
+	configs.scaleMode = scale;
+	}
+
 void acc_init(accelerometerMode powerMode){
     acc_powerMode(powerMode);
 		uint8_t ctrlReg6 = readRegister(ACC_ADDR, CTRL_REG6_A)	//set interrupt pins as active-low
@@ -65,72 +104,9 @@ void acc_init(accelerometerMode powerMode){
 		acc_enableBDU();
 }
 
-
-
-//  power modes:
-//  Low Power Mode = 8bit
-//  Normal Mode = 10 bit
-//  High Resolution Mode = 12bit
-
-void acc_powerMode(accelerometerMode powerMode){		//acc_powerMode enables and sets power mode
-    switch (powerMode){            //        LowPowerMode, NormalMode, or HighResMode -- 50hz low-power mode uses 7.7uA
-        case LowPowerMode:
-	        {uint8_t ctrlReg4 = readRegister(ACC_ADDR, CTRL_REG4_A)	//disable HR if active
-						&	(~(1<<HR));
-					writeRegister(ACC_ADDR, CTRL_REG4_A, ctrlReg4); 
-			
-			 		uint8_t ctrlReg1 = 7 			|			(1<<LPen)			|			(ODR50Hz<<ODR0)	;	/*((((~ODR50Hz)<<ODR0)) | ((1<<(ODR0))-1))  ; */   //enable LowPower mode, set ODR to 50hz
-					writeRegister(ACC_ADDR, CTRL_REG1_A, ctrlReg1);
-
-					currentMode        =		LowPowerMode;
-			 	break;}
-
-
-        case NormalMode:
-					{uint8_t ctrlReg4 = readRegister(ACC_ADDR, CTRL_REG4_A)	//disable HR if active
-			      &	(~(1<<HR));
-					writeRegister(ACC_ADDR, CTRL_REG4_A, ctrlReg4); 	
-
-					uint8_t ctrlReg1 = 7 | (ODR400Hz<<ODR0);		//disable LP bit=normal mode, ODR set to 400hz
-
-					writeRegister(ACC_ADDR, CTRL_REG1_A, ctrlReg1);
-
-					currentMode        =		NormalMode;
-				break;}
-
-
-        case HighResMode:
-			 		{uint8_t ctrlReg4 = readRegister(ACC_ADDR, CTRL_REG4_A)    //ctrl register 4 houses high resolution enable bit
-						| (1<<HR);
-					writeRegister(ACC_ADDR, CTRL_REG4_A, ctrlReg4);  
-
-			  	uint8_t ctrlReg1  = 7 | (HrNormal1k344<<ODR0);		//disable LP bit=, ODR set to 1k344
-					writeRegister(ACC_ADDR, CTRL_REG1_A, ctrlReg1);
-					currentMode        =		HighResMode;
-          break;}
-
-			default:
-			{break;}  
-		
-		}          
-}
-
-
-void acc_setScale(scale scale){
-	uint8_t ctrlReg4 = readRegister(ACC_ADDR, CTRL_REG4_A)	| (scale<<FS0);
-}
-
-
-
-//---------------------------------Accelerometer functions-----------------------------------
-/////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
  void acc_enable(){		//after initial power mode set, this function is used to reactivate after slp, without the need to specify powermode again
-  acc_powerMode(currentMode);
+  acc_powerMode(configs.powerMode);
 }
-
 
 
 void acc_disable(){
@@ -139,6 +115,7 @@ void acc_disable(){
 			writeRegister(ACC_ADDR, CTRL_REG1_A, ctrlreg1A);
 }
 
+
 void acc_reboot(){
     uint8_t ctrlreg5A = readRegister(ACC_ADDR, CTRL_REG5_A)
 				|	(1<<BOOT);  //write reboot memory register bit
@@ -146,70 +123,187 @@ void acc_reboot(){
 }
 
 
-//Only 1byte read working atm
-//2Byteread's not working, likely due to no repeated start signal in ASF4
+//  power modes:
+//  Low Power Mode = 8bit
+//  Normal Mode = 10 bit
+//  High Resolution Mode = 12bit
+/////////////CTRL_REG1_A//////////////
+//ODR3|ODR2|ODR1|ODR0|LPen|Zen|Yen|Xen
+
+void acc_powerMode(accelerometerMode powerMode){		//acc_powerMode enables and sets power mode
+    switch (powerMode){            //        LowPowerMode, NormalMode, or HighResMode -- 50hz low-power mode uses 7.7uA
+        case LowPowerMode:	//LPen=1, low operating frequency
+	        {uint8_t ctrlReg4 = readRegister(ACC_ADDR, CTRL_REG4_A)	//disable HR if active
+						&	(~(1<<HR));
+					writeRegister(ACC_ADDR, CTRL_REG4_A, ctrlReg4); 
+					writeRegister(ACC_ADDR, CTRL_REG1_A, (0b00001111 | (ODR50Hz<<4)));
+					configs.powerMode        =		LowPowerMode;
+			 	break;
+				 }
 
 
-int16_t acc_getX(){
-	if (currentMode==LowPowerMode){
 
-	}
+        case NormalMode:	//LP=0, high frequency
+					{uint8_t ctrlReg4 = readRegister(ACC_ADDR, CTRL_REG4_A)	//disable HR if active
+			      &	(~(1<<HR));
+					writeRegister(ACC_ADDR, CTRL_REG4_A, ctrlReg4); 	
+					writeRegister(ACC_ADDR, CTRL_REG1_A, (0b00000111 | (ODR400Hz<<4)));
+					configs.powerMode        =		NormalMode;
+				break;
+				}
 
-// 	if (currentMode == LowPowerMode){			//8bit result
-// 		reinterpret8b.convertedValueUnsigned = readRegister(ACC_ADDR, OUT_X_H_A);
-// 		return reinterpret8b.convertedValueSigned;
-// 	}
 
-// 	else {		//10bit result
-// 		 uint16_t convertedValueI16 = ~read16bRegister(ACC_ADDR, OUT_X_L_A);
-//       //invert bits
-// convertedValueI16 &= ( 0xFFFF>>(16-10) ); //but keep just the 10-bits
-// convertedValueI16 += 1;                       //add 1
-// convertedValueI16 *=-1;
-// 	reinterpret.convertedValueUnsigned =	convertedValueI16;
-// 		return (reinterpret.convertedValueSigned);
+        case HighResMode:	//LP=0. HR=1, HrNormal1k344 highest freq
+			 		{uint8_t ctrlReg4 = readRegister(ACC_ADDR, CTRL_REG4_A)    //ctrl register 4 houses high resolution enable bit
+						| (1<<HR);
+					writeRegister(ACC_ADDR, CTRL_REG4_A, ctrlReg4);  
+					writeRegister(ACC_ADDR, CTRL_REG1_A, (0b00000111 | HrNormal1k344<<4));
+					configs.powerMode        =		HighResMode;
+          break;
+					}
 
+
+				default:
+				{break;}  
 		
-// 	}
- }
+		}          
+}
+/////////////////////////CTRL_REG2_A////////////////////////////
+/////////////////////High Pass Filter///////////////////////////
+/////////HPM1|HPM0|HPCF2|HPCF1|FDS|HPCLICK|HPIS2|HPIS1//////////
+
+/////////////////////////CTRL_REG3_A////////////////////////////
+/////////////////////////Interrupt 1////////////////////////////
+//I1_CLICK|I1_AOI1|I1_AOI2|I1_DRDY1|I1_DRDY2|I1_WTM|I1_OVERRUN|--
+
+void acc_enableInterrupt0(uint8_t axesEvents, double threshold, uint8_t duration, interruptMode interruptMode)
+{
+    // setup the interrupt
+    writeRegister(ACC_ADDR, INT1_CFG_A, interruptMode | (axesEvents & 0b00111111));
+    writeRegister(ACC_ADDR, INT1_THS_A, getScaledInterruptThreshold(threshold));
+    writeRegister(ACC_ADDR, INT1_DURATION_A, duration); // time duration is INT1_DURATION_A/ODR
+
+    // disable latching
+    unsetAccelRegisterBits(CTRL_REG5_A, _BV(LIR_IG1));
+
+    // enable interrupt generator 1 on INT1
+    setAccelRegisterBits(CTRL_REG3_A, _BV(INT1_AOI1));
+}
+
+void acc_enableInterrupt1(uint8_t axesEvents, double threshold, uint8_t duration, interruptMode interruptMode)
+{
+    // setup the interrupt
+    writeRegister(ACC_ADDR, INT1_CFG_A, interruptMode | (axesEvents & 0b00111111));
+    writeRegister(ACC_ADDR, INT1_THS_A, getScaledInterruptThreshold(threshold));
+    writeRegister(ACC_ADDR, INT1_DURATION_A, duration); // time duration is INT1_DURATION_A/ODR
+
+    // disable latching
+    unsetAccelRegisterBits(CTRL_REG5_A, _BV(LIR_IG1));
+
+    // enable interrupt generator 1 on INT1
+    setAccelRegisterBits(CTRL_REG3_A, _BV(INT1_AOI1));
+}
 
 
+/////////////////////////CTRL_REG4_A////////////////////////////
+////////////////////////modes, scales///////////////////////////
+/////////////BDU|BLE|FS1|FS0|HR|ST1|ST0|SPI_enable//////////////
 
-// int16_t acc_getY(){	
+/////////////////////////CTRL_REG5_A////////////////////////////
+//////////////////configs, int latch, 4D////////////////////////
+////////BOOT|FIFO_EN|--|--|LIR_INT1|D4D_INT1|LIR_INT2|D4D_INT2//
 
-// 	if (currentMode == LowPowerMode){			//8bit result
-// 		reinterpret8b.convertedValueUnsigned = readRegister(ACC_ADDR, OUT_Y_H_A);
-// 		return reinterpret8b.convertedValueSigned;
-// 	}
+/////////////////////////CTRL_REG6_A////////////////////////////
+/////////////////////////Interrupt 2////////////////////////////
+////////I2_CLICKen|I2_INT1|I2_INT2|BOOT_I2|P2_ACT|--|H_LACTIVE|-
 
-// 	else {		//10bit result
-// 		 uint16_t convertedValueI16 = ~read16bRegister(ACC_ADDR, OUT_Y_L_A);
-//       //invert bits
-// convertedValueI16 &= ( 0xFFFF>>(16-10) ); //but keep just the 10-bits
-// convertedValueI16 += 1;                       //add 1
-// convertedValueI16 *=-1;
-// 	reinterpret.convertedValueUnsigned =	convertedValueI16;
-// 		return (reinterpret.convertedValueSigned);
-// }
-// }
-// int16_t acc_getZ(){
-// 	if (currentMode == LowPowerMode){			//8bit result
-// 		reinterpret8b.convertedValueUnsigned = readRegister(ACC_ADDR, OUT_Z_H_A);
-// 	return reinterpret8b.convertedValueSigned;
-// 	}
+acc_scaledIntTHS(double threshold)
+{
+    uint8_t divider = 0; // divider in mg
 
-// 	else{		//10bit result
-// 		uint16_t convertedValueI16 = ~read16bRegister(ACC_ADDR, OUT_Z_L_A);
-//       //invert bits
-// 		convertedValueI16 &= ( 0xFFFF>>(16-10) ); //but keep just the 10-bits
-// 		convertedValueI16 += 1;                       //add 1
-// 		convertedValueI16 *=-1;
-// 		reinterpret.convertedValueUnsigned =	convertedValueI16;
-// 		return (reinterpret.convertedValueSigned);
-// }
+    switch (configs.scaleMode)
+    {
+    case Scale2g: divider = 16;
+        break;
+    case Scale4g: divider = 32;
+        break;
+    case Scale8g: divider = 62;
+        break;
+    case Scale16g: divider = 186;
+        break;
+    default:
+        break;
+    }
 
-// }
+    return trunc(threshold * 1000.0f / divider);
+}
 
+acc_getGsRawValue(int16_t value)
+{
+    if (configs.powerMode == HighResMode) {
+        value /= 16; // 12-bit value
+        
+        switch (configs.scaleMode)
+        {
+            case Scale2g: return value * 1.0f / 1000.0f;
+            case Scale4g: return value * 2.0f / 1000.0f;
+            case Scale8g: return value * 4.0f / 1000.0f;
+            case Scale16g: return value * 12.0f / 1000.0f;
+            default:
+                break;
+        }
+    }
+    else if (configs.powerMode == NormalMode) {
+        value /= 64; // 10-bit value
+        
+        switch (configs.scaleMode)
+        {
+            case Scale2g: return value * 4.0f / 1000.0f;
+            case Scale4g: return value * 8.0f / 1000.0f;
+            case Scale8g: return value * 16.0f / 1000.0f;
+            case Scale16g: return value * 48.0f / 1000.0f;
+            default:
+                break;
+        }
+    }
+
+    else if (configs.powerMode == LowPowerMode) {
+        value /= 256; // 8-bit value
+        
+        switch (configs.scaleMode)
+        {
+            case Scale2g: return value * 16.0f / 1000.0f;
+            case Scale4g: return value * 32.0f / 1000.0f;
+            case Scale8g: return value * 64.0f / 1000.0f;
+            case Scale16g: return value * 192.0f / 1000.0f;
+            default:
+                break;
+        }
+    }
+
+    return 0.0f;
+}
+
+int8_t acc_getTemperature()
+{		
+		acc_enableBDU();
+		writeRegister(ACC_ADDR, TEMP_CFG_REG_A, (1<<TEMP_EN1));		//enable temperature data
+    int16_t value = read16bRegister(ACC_ADDR, OUT_TEMP_L_A);	//read temperature data
+		acc_enableBDU();
+
+    if (configs.powerMode == HighResMode || configs.powerMode == NormalMode) {
+        value /= 64; // 12-bit value
+        
+        return value / 4.0f + 25.0f;
+    }
+    else if (configs.powerMode == LowPowerMode) {
+        value /= 256; // 8-bit value
+
+        return value + 25.0f;
+    }
+
+    return 0.0f;
+}
 
 //---------------------------------Magnetometer functions------------------------------------
 /////////////////////////////////////////////////////////////////////////////////////////////
@@ -243,32 +337,38 @@ void mag_reboot(){
 // 			writeRegister(MAG_ADDR, CFG_REG_A_M, CFGregAM);
  }
 
+mag_getScaledValue(int16_t value)
+{
+    return value * 1.5;
+}
 
-uint16_t mag_getX(){			//magnetic reading data is stored as two's compliment
-	uint16_t rawValue = 0;
-		rawValue =   read16bRegister(MAG_ADDR, OUTX_L_REG_M);
-		return rawValue; }
 
-uint16_t mag_getY(){
-	uint16_t rawValue=0;
-		rawValue =   read16bRegister(MAG_ADDR, OUTY_L_REG_M);
-		return rawValue; }
+mag_enable()
+{
+    // set odr, mode, systemMode
+		writeRegister(MAG_ADDR, CFG_REG_A_M, 0b10010000);   //tempcompensation=1,LP=1,ODR=10hz, continuous mode
+		mag_enableLowPass();
 
-uint16_t mag_getZ(){
-	uint16_t rawValue=0;
-		rawValue =   read16bRegister(MAG_ADDR, OUTZ_L_REG_M);
-		return rawValue; }
+    // disable hard-iron calibration
+    writeRegister(MAG_ADDR , OFFSET_X_REG_L_M, 0);
+    writeRegister(MAG_ADDR , OFFSET_X_REG_H_M, 0);
+    writeRegister(MAG_ADDR , OFFSET_Y_REG_L_M, 0);
+    writeRegister(MAG_ADDR , OFFSET_Y_REG_H_M, 0);
+    writeRegister(MAG_ADDR , OFFSET_Z_REG_L_M, 0);
+    writeRegister(MAG_ADDR , OFFSET_Z_REG_H_M, 0);
 
+    // disable offset cancellation
+		writeRegister(MAG_ADDR, CFG_REG_B_M, (readRegister(MAG_ADDR, CFG_REG_B_M)	&& ~(1<<OFF_CANC))	);
+}
 
 
 //------------------------------------M_SoftwareReset----------------------------------------
 /////////////////////////////////////////////////////////////////////////////////////////////
 //the configuration registers and user registers are reset. Flash registers keep their values
 
-void mag_softwareReset(){		
+void mag_softwareReset(){	
   writeRegister(MAG_ADDR, CFG_REG_A_M, (1<<SOFT_RST));	
 }
-
 
 
 //-------------------------------------Low-pass filter----------------------------------------
@@ -288,23 +388,8 @@ uint8_t mag_disableLowPass(){
 }
 
 
-
 //---------------------------------------INTERRUPTS--------------------------------------------
 ///////////////////////////////////////////////////////////////////////////////////////////////
-
-void enableInterrupt1(){
-	
-		
-	}
-void disableInterrupt1(){
-		
-	}
-void enableInterrupt2(){
-		
-	}
-void disableInterrupt2(){
-		
-	}
 
 
 void mag_enableInterrupt(){
@@ -345,7 +430,7 @@ uint16_t read16bRegister(uint8_t address, uint8_t reg){
 		bitConvert.uByteLow = I2C_0_read1ByteRegister(address, reg);
 		bitConvert.uByteHigh = I2C_0_read1ByteRegister(address, (reg+1));
 
-		return bitConvert.sTwoByte;
+		return bitConvert.uTwoByte;
 }
 
 

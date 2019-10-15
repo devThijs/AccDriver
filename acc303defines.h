@@ -1,14 +1,15 @@
 #ifndef ACC303DEFINES_H_
 #define ACC303DEFINES_H_
 
-#define ACC_ADDR 0b0011001
-#define MAG_ADDR 0b0011110
 
 #include <stdint.h>
 
 #ifdef __cplusplus
 	extern "C"{
 #endif
+
+#define ACC_ADDR 0b0011001
+#define MAG_ADDR 0b0011110
 
       enum Register {
         STATUS_REG_AUX = 0x07,
@@ -249,12 +250,13 @@ typedef    enum {
         XLow = 0b00000001
     };
 
-      enum interruptMode {
+typedef     enum {
         OrCombination = 0b00000000,
         MovementRecognition = 0b01000000,
         AndCombination = 0b10000000,
         PositionRecognition = 0b11000000
-    };
+    }interruptMode;
+
 
 #ifdef __cplusplus
 }
