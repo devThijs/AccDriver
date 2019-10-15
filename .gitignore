@@ -1,5 +1,1 @@
-Config/*
-include/*
-src/*
-utils/*
-.vscode/*
+**/.vscode
