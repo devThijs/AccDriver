@@ -43,8 +43,13 @@ int16_t acc_getX();
 int16_t acc_getY();
 int16_t acc_getZ();
 
-void acc_enableInterrupt0(uint8_t axesEvents, double threshold, uint8_t duration, interruptMode interruptMode);
+void acc_enableInterrupt0(uint8_t axesEvents, double threshold, uint8_t duration, interruptMode interruptMode, bool latchOrNah);
 void acc_enableInterrupt1(uint8_t axesEvents, double threshold, uint8_t duration, interruptMode interruptMode);
+axesEvents acc_readInterruptSRC();
+
+uint8_t acc_getScaledIntTHS(double threshold);
+uint8_t acc_getGsRawValue(int16_t value);
+int8_t acc_getTemperature();
 
 //-----------Magnetometer functions-------------
 
@@ -63,19 +68,23 @@ uint16_t mag_getY();
 uint16_t mag_getZ();
 void softReset();
 void selfTest();
+void getAxes();
+void getAxesScaled();
 
-void acc_enableInterrupt0(uint8_t axesEvents, double threshold, uint8_t duration, interruptMode interruptMode);
-void acc_enableInterrupt1(uint8_t axesEvents, double threshold, uint8_t duration, interruptMode interruptMode);
 void disableInterrupt2();
 void mag_enableInterrupt();
 void mag_disableInterrupt();
-bool checkInterruptRegister();
 
+
+double mag_getScaledValue(int16_t value);
+
+void acc_setRegBits(uint8_t reg, uint8_t bit);
+void acc_unsetRegBits(uint8_t reg, uint8_t bit);
 
 uint8_t readRegister(uint8_t address, uint8_t reg);
 uint16_t read16bRegister(uint8_t address, uint8_t reg);
 
-void writeRegister(uint8_t address, uint8_t reg, uint16_t data);
+void writeRegister(uint8_t address, uint8_t reg, uint8_t data);
 void write2BRegister(uint8_t address, uint8_t reg, uint16_t data);
 
 #ifdef __cplusplus
